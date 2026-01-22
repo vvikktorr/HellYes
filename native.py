@@ -36,6 +36,8 @@ def main():
         headers = message.get("headers", "")
         license_data = message.get("licenseData", "")
         body_base_64 = message.get("bodyBase64", "")
+        cookies = message.get("cookies", "")
+        cdn_cookies = message.get("cdnCookies", "")
         title = message.get("title", "")
         if not title:
             title = datetime.datetime.now().isoformat()  # Example: '2025-02-15T14:30:00.123456'
@@ -49,6 +51,8 @@ def main():
             "licenseUrl": license_url,
             "headerString": header_string,
             "headers": headers,
+            "cookies": cookies,
+            "cdnCookies": cdn_cookies,
             "licenseData": license_data,
             "bodyBase64": body_base_64,
             "title": title,

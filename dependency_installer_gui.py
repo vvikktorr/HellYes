@@ -197,10 +197,18 @@ class DependencyInstaller:
                 return False
         else:
             # Linux/macOS: Check file locations
-            chrome_manifest = Path.home() / ".config/google-chrome/NativeMessagingHosts/org.hellyes.hellyes.json"
-            chromium_manifest = Path.home() / ".config/chromium/NativeMessagingHosts/org.hellyes.hellyes.json"
-            firefox_manifest = Path.home() / ".mozilla/native-messaging-hosts/org.hellyes.hellyes.json"
-            brave_manifest = Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json"
+            if platform.system() == 'Darwin':
+                # macOS paths
+                chrome_manifest = Path.home() / "Library/Application Support/Google/Chrome/NativeMessagingHosts/org.hellyes.hellyes.json"
+                chromium_manifest = Path.home() / "Library/Application Support/Chromium/NativeMessagingHosts/org.hellyes.hellyes.json"
+                firefox_manifest = Path.home() / "Library/Application Support/Mozilla/NativeMessagingHosts/org.hellyes.hellyes.json"
+                brave_manifest = Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json"
+            else:
+                # Linux paths
+                chrome_manifest = Path.home() / ".config/google-chrome/NativeMessagingHosts/org.hellyes.hellyes.json"
+                chromium_manifest = Path.home() / ".config/chromium/NativeMessagingHosts/org.hellyes.hellyes.json"
+                firefox_manifest = Path.home() / ".mozilla/native-messaging-hosts/org.hellyes.hellyes.json"
+                brave_manifest = Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json"
 
             # Check if any manifest exists and is valid
             for manifest in [chrome_manifest, chromium_manifest, firefox_manifest, brave_manifest]:

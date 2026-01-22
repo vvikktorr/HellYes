@@ -17,7 +17,8 @@
     "permissions": [
         "webRequest",
         "webRequestBlocking",
-        "nativeMessaging"
+        "nativeMessaging",
+        "cookies"
     ],
     "host_permissions": [
         "*://*/*"

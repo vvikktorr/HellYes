@@ -31,8 +31,18 @@ WVD_PATH            = "./device.wvd"
 WIDEVINE_SYSTEM_ID  = "EDEF8BA9-79D6-4ACE-A3C8-27DCD51D21ED"
 
 # ------------------------------------------------------------------------------ helpers
-def fetch(url):                              # grab MPD text
-    r = httpx.get(url); r.raise_for_status(); return r.text
+def fetch(url, headers=None, cookies=None):  # grab MPD text
+    # Clean headers for GET request - remove POST-specific headers
+    clean_headers = None
+    if headers:
+        clean_headers = {k: v for k, v in headers.items()
+                        if k.lower() not in ('content-type', 'content-length')}
+    # Add cookies to headers if provided
+    if cookies:
+        if clean_headers is None:
+            clean_headers = {}
+        clean_headers['Cookie'] = cookies
+    r = httpx.get(url, headers=clean_headers); r.raise_for_status(); return r.text
 
 def load_json_cfg(path):
     with open(path, "r", encoding="utf-8") as f:
@@ -52,8 +62,11 @@ def load_json_cfg(path):
         hdrs = hdrs_raw
     # -----------------------------------------------------------------
 
+    cookies = cfg.get("cookies", "")
+    cdn_cookies = cfg.get("cdnCookies", "")
+
     body = base64.b64decode(body_b64)
-    return mpd_url, lic_url, hdrs, body, title, delete_me
+    return mpd_url, lic_url, hdrs, body, title, delete_me, cookies, cdn_cookies
 
 # ---------------------- MPD → PSSH ----------------------------------------------------
 def find_default_kid(text):                  # regex fallback
@@ -135,7 +148,7 @@ def extract_or_gen_pssh(mpd_url, mpd_text):
     sys.exit("✖ could not find PSSH or default_KID in MPD")
 
 # ---------------------- licence POST  -------------------------------------------------
-def get_keys(pssh_b64, url, headers, body_bytes):
+def get_keys(pssh_b64, url, headers, body_bytes, cookies=None):
     """
     Build a valid licence request by *patching* the browser's original POST
     body with our fresh Widevine challenge, then return the CONTENT keys.
@@ -186,6 +199,9 @@ def get_keys(pssh_b64, url, headers, body_bytes):
     hdrs = headers.copy()
     hdrs.pop("Content-Length", None)   # let httpx calculate correct size
     hdrs.pop("Host", None)             # httpx fills it
+    # Add cookies if provided
+    if cookies:
+        hdrs['Cookie'] = cookies
 
     # ------------ POST -------------------------------------------------------
     print(colored(f"DEBUG: Sending POST to {url}", "magenta"))
@@ -222,15 +238,17 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit("usage: allhell3.py  <json-file-from-extension>")
 
-    mpd, lic_url, headers, body, title, delete_me = load_json_cfg(sys.argv[1])
+    mpd, lic_url, headers, body, title, delete_me, cookies, cdn_cookies = load_json_cfg(sys.argv[1])
 
-    pssh = extract_or_gen_pssh(mpd, fetch(mpd))
+    # Use CDN cookies for MPD fetch if available, otherwise fall back to page cookies
+    mpd_cookies = cdn_cookies if cdn_cookies else cookies
+    pssh = extract_or_gen_pssh(mpd, fetch(mpd, headers, mpd_cookies))
     print(colored(f"PSSH → {pssh}\n", "cyan"))
 
     print(colored(f"lic_url → {lic_url}\n", "cyan"))
     print(colored(f"headers → {headers}\n", "cyan"))
     print(colored(f"body → {body}\n", "cyan"))
-    keys = get_keys(pssh, lic_url, headers, body)
+    keys = get_keys(pssh, lic_url, headers, body, cookies)
     print(colored("\n".join(keys) + "\n", "yellow"))
 
     # Create downloads directory if it doesn't exist
@@ -282,6 +300,9 @@ if __name__ == "__main__":
         "-M", "format=mkv:muxer=mkvmerge",
         "--auto-select"
     ]
+    # Add CDN cookies as header if available
+    if mpd_cookies:
+        cmd.extend(["--header", f"Cookie: {mpd_cookies}"])
     print(colored(" ".join(cmd) + "\n", "green"))
 
     input("↩  Enter to run, Ctrl-C to abort … ")

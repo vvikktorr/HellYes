@@ -65,7 +65,7 @@ chrome.webRequest.onCompleted.addListener(
 
         // Exclude requests that are for images
         if (details.type === "image") return;
-        if (/manifest|license/i.test(details.url)) {
+        if ((/manifest|license|\/drm\/|type=widevine|\.mpd(\?|$)/i.test(details.url)) && !/\.webmanifest/i.test(details.url)) {
             storeTabData(details.tabId, 'manifestUrl', details.url)
             manifestUrl = details.url;
             console.log("Matched URL:", details.url);
@@ -94,7 +94,7 @@ function bytesToBase64(rawBytes) {
 
 chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
-        if (details.method === "POST" && /license/i.test(details.url)) {
+        if (details.method === "POST" && /license|\/drm\/|type=widevine/i.test(details.url)) {
 
             let tabId = details.tabId;
             if (tabId < 0) return;
@@ -124,7 +124,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 // Listener for request headers
 chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
-        if (details.method === "POST" && /license/i.test(details.url)) {
+        if (details.method === "POST" && /license|\/drm\/|type=widevine/i.test(details.url)) {
             // Extract headers into a more convenient format (e.g., as a key-value object)
             const headers = details.requestHeaders.reduce((acc, header) => {
                 acc[header.name] = header.value;
@@ -206,34 +206,79 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 return;
             }
 
-            // Create an object with the necessary parameters for allhell3.py
-            const dataToSend = {
-                manifestUrl: tabData[tabId].manifestUrl || "",
-                licenseUrl: tabData[tabId].licenseUrl || "",
-                bodyBase64: tabData[tabId].licenseBase64 || "", // The script expects bodyBase64
-                headers: tabData[tabId].headers || {},          // The script expects a dict
-                title: msg.title || tabData[tabId].title || "video", // Prioritize user input
-                deleteMe: false
-            };
+            // Get cookies for the current tab's URL and the manifest URL domain
+            const tabUrl = tabs[0].url;
+            const manifestUrl = tabData[tabId].manifestUrl || "";
+            console.log("Getting cookies for URL:", tabUrl);
+            console.log("Manifest URL:", manifestUrl);
 
-            console.log("Sending data to native host:", dataToSend);
-
-            // Send the collected data to the native host
-            chrome.runtime.sendNativeMessage(
-                "org.hellyes.hellyes", // This must match the "name" in your native messaging host manifest
-                dataToSend,
-                (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.error("Error sending native message:", chrome.runtime.lastError.message);
-                        sendResponse({ status: "error", error: chrome.runtime.lastError.message });
-                    } else {
-                        console.log("Native host responded:", response);
-                        sendResponse({ status: "success", response: response });
-                    }
+            // Get cookies for both the page domain and CDN domain
+            chrome.cookies.getAll({ url: tabUrl }, (pageCookies) => {
+                if (chrome.runtime.lastError) {
+                    console.error("Error getting page cookies:", chrome.runtime.lastError.message);
                 }
-            );
+                console.log("Got page cookies:", pageCookies ? pageCookies.length : 0);
 
-            return true; // Indicate asynchronous response
+                // Also try to get cookies for the manifest URL domain (CDN)
+                let cdnCookies = [];
+                if (manifestUrl) {
+                    chrome.cookies.getAll({ url: manifestUrl }, (mCookies) => {
+                        cdnCookies = mCookies || [];
+                        console.log("Got CDN cookies:", cdnCookies.length);
+                        finishSending(pageCookies, cdnCookies);
+                    });
+                } else {
+                    finishSending(pageCookies, []);
+                }
+
+                function finishSending(pageCookies, cdnCookies) {
+                    // Format page cookies
+                    const pageCookieString = (pageCookies || []).map(c => `${c.name}=${c.value}`).join("; ");
+                    // Format CDN cookies separately (for MPD fetching)
+                    const cdnCookieString = (cdnCookies || []).map(c => `${c.name}=${c.value}`).join("; ");
+                    // Combined cookies (CDN cookies override page cookies with same name)
+                    const allCookies = [...(pageCookies || [])];
+                    const cookieNames = new Set(allCookies.map(c => c.name));
+                    for (const c of (cdnCookies || [])) {
+                        if (!cookieNames.has(c.name)) {
+                            allCookies.push(c);
+                        }
+                    }
+                    const combinedCookieString = allCookies.map(c => `${c.name}=${c.value}`).join("; ");
+
+                    console.log("Page cookies:", pageCookieString.substring(0, 100));
+                    console.log("CDN cookies:", cdnCookieString.substring(0, 100));
+
+                    // Create an object with the necessary parameters for allhell3.py
+                    const dataToSend = {
+                        manifestUrl: tabData[tabId].manifestUrl || "",
+                        licenseUrl: tabData[tabId].licenseUrl || "",
+                        bodyBase64: tabData[tabId].licenseBase64 || "", // The script expects bodyBase64
+                        headers: tabData[tabId].headers || {},          // The script expects a dict
+                        cookies: pageCookieString,                      // Page cookies (for license)
+                        cdnCookies: cdnCookieString,                    // CDN cookies (for MPD)
+                        title: msg.title || tabData[tabId].title || "video", // Prioritize user input
+                        deleteMe: false
+                    };
+
+                    console.log("Sending data to native host:", dataToSend);
+
+                    // Send the collected data to the native host
+                    chrome.runtime.sendNativeMessage(
+                        "org.hellyes.hellyes", // This must match the "name" in your native messaging host manifest
+                        dataToSend,
+                        (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error("Error sending native message:", chrome.runtime.lastError.message);
+                                sendResponse({ status: "error", error: chrome.runtime.lastError.message });
+                            } else {
+                                console.log("Native host responded:", response);
+                                sendResponse({ status: "success", response: response });
+                            }
+                        }
+                    );
+                } // close finishSending function
+            }); // close pageCookies.getAll callback
         });
 
         return true; // Indicate asynchronous response

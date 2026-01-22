@@ -169,3 +169,6 @@ bin/
 client_id.bin
 private_key.pem
 device.wvd
+
+pending/
+etc/

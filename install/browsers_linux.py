@@ -9,7 +9,10 @@ import os
 import sys
 import json
 import shutil
+import platform
 from pathlib import Path
+
+IS_MACOS = platform.system() == 'Darwin'
 
 def get_script_dir():
     """Get the project root directory (where the executable or scripts are located)"""
@@ -90,18 +93,32 @@ def create_manifest_file(manifest_data, file_path):
     return file_path
 
 def check_browser_installed(browser_name):
-    """Check if a browser is installed by checking if command exists"""
-    browser_commands = {
-        "Chrome": "google-chrome",
-        "Chromium": "chromium",
-        "Firefox": "firefox",
-        "Brave": "brave-browser",
-    }
+    """Check if a browser is installed by checking if command exists or app bundle exists"""
+    if IS_MACOS:
+        # macOS: Check for .app bundles in /Applications
+        browser_apps = {
+            "Chrome": "/Applications/Google Chrome.app",
+            "Chromium": "/Applications/Chromium.app",
+            "Firefox": "/Applications/Firefox.app",
+            "Brave": "/Applications/Brave Browser.app",
+            "Safari": "/Applications/Safari.app",
+        }
+        if browser_name not in browser_apps:
+            return False
+        return Path(browser_apps[browser_name]).exists()
+    else:
+        # Linux: Check for commands
+        browser_commands = {
+            "Chrome": "google-chrome",
+            "Chromium": "chromium",
+            "Firefox": "firefox",
+            "Brave": "brave-browser",
+        }
 
-    if browser_name not in browser_commands:
-        return False
+        if browser_name not in browser_commands:
+            return False
 
-    return shutil.which(browser_commands[browser_name]) is not None
+        return shutil.which(browser_commands[browser_name]) is not None
 
 def is_snap_installed(browser_command):
     """Check if a browser is installed via snap"""
@@ -112,11 +129,20 @@ def is_snap_installed(browser_command):
 
 def install_chrome_manifest(browser_name, extension_id):
     """Install manifest for Chrome-based browser"""
-    browser_dirs = {
-        "Chrome": Path.home() / ".config/google-chrome/NativeMessagingHosts",
-        "Chromium": Path.home() / ".config/chromium/NativeMessagingHosts",
-        "Brave": Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts",
-    }
+    if IS_MACOS:
+        # macOS paths
+        browser_dirs = {
+            "Chrome": Path.home() / "Library/Application Support/Google/Chrome/NativeMessagingHosts",
+            "Chromium": Path.home() / "Library/Application Support/Chromium/NativeMessagingHosts",
+            "Brave": Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts",
+        }
+    else:
+        # Linux paths
+        browser_dirs = {
+            "Chrome": Path.home() / ".config/google-chrome/NativeMessagingHosts",
+            "Chromium": Path.home() / ".config/chromium/NativeMessagingHosts",
+            "Brave": Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts",
+        }
 
     if browser_name not in browser_dirs:
         return False, f"Unsupported browser: {browser_name}"
@@ -134,7 +160,13 @@ def install_chrome_manifest(browser_name, extension_id):
 
 def install_firefox_manifest():
     """Install manifest for Firefox"""
-    host_dir = Path.home() / ".mozilla/native-messaging-hosts"
+    if IS_MACOS:
+        # macOS path
+        host_dir = Path.home() / "Library/Application Support/Mozilla/NativeMessagingHosts"
+    else:
+        # Linux path
+        host_dir = Path.home() / ".mozilla/native-messaging-hosts"
+
     manifest_path = host_dir / "org.hellyes.hellyes.json"
 
     try:
@@ -149,8 +181,9 @@ def install_browsers_manifest(extension_id=None):
     """Install browser manifests for all detected browsers"""
     results = []
 
+    platform_name = "macOS" if IS_MACOS else "Linux"
     print("=" * 60)
-    print("HellYes Browser Native Messaging Host Installer (Linux)")
+    print(f"HellYes Browser Native Messaging Host Installer ({platform_name})")
     print("=" * 60)
     print()
 
@@ -256,8 +289,9 @@ def install_browsers_manifest_filtered(extension_id=None, firefox_only=False, ch
     """Install browser manifests with filter for specific browser types"""
     results = []
 
+    platform_name = "macOS" if IS_MACOS else "Linux"
     print("=" * 60)
-    print("HellYes Browser Native Messaging Host Installer (Linux)")
+    print(f"HellYes Browser Native Messaging Host Installer ({platform_name})")
     print("=" * 60)
     print()
 

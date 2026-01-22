@@ -306,8 +306,9 @@ class ProcessingTab:
         """Mark the processing as complete"""
         self.is_complete = True
         self.stop_button.config(state=DISABLED)
-        self.retry_button.config(state=DISABLED)
-        self.delete_button.config(state=DISABLED)
+        # Allow retry on failure
+        self.retry_button.config(state=DISABLED if success else NORMAL)
+        self.delete_button.config(state=DISABLED if success else NORMAL)
         self.close_button.config(state=NORMAL)
 
         try:
@@ -479,7 +480,7 @@ class ProcessingTab:
     def _process_unix(self):
         """Unix-specific processing using pexpect"""
         cmd = f"{self.venv_python} '{ALLHELL3_SCRIPT}' '{self.file_path}'"
-        self.process = pexpect.spawn(cmd, timeout=30, encoding='utf-8', cwd=os.getcwd())
+        self.process = pexpect.spawn(cmd, timeout=30, encoding='utf-8', codec_errors='replace', cwd=os.getcwd())
         self.process.setwinsize(24, 120)
 
         output_buffer = ""
@@ -619,7 +620,15 @@ class AutoProcessorGUI:
         if platform.system() == 'Windows':
             self.venv_python = "python"  # Use system python or venv if activated
         else:
-            self.venv_python = os.path.expanduser("~/venvs/hellshared/bin/python3")
+            # Try to find a working Python - check project venv first, then system python3
+            project_venv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "python")
+            legacy_venv = os.path.expanduser("~/venvs/hellshared/bin/python3")
+            if os.path.exists(project_venv):
+                self.venv_python = project_venv
+            elif os.path.exists(legacy_venv):
+                self.venv_python = legacy_venv
+            else:
+                self.venv_python = "python3"
 
         self.setup_ui()
         self.main_log("Application started")
@@ -867,12 +876,22 @@ class AutoProcessorGUI:
             # Linux/macOS: Check file locations
             browsers_found = []
 
-            manifests = {
-                "Chrome": Path.home() / ".config/google-chrome/NativeMessagingHosts/org.hellyes.hellyes.json",
-                "Chromium": Path.home() / ".config/chromium/NativeMessagingHosts/org.hellyes.hellyes.json",
-                "Firefox": Path.home() / ".mozilla/native-messaging-hosts/org.hellyes.hellyes.json",
-                "Brave": Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json",
-            }
+            if platform.system() == 'Darwin':
+                # macOS paths
+                manifests = {
+                    "Chrome": Path.home() / "Library/Application Support/Google/Chrome/NativeMessagingHosts/org.hellyes.hellyes.json",
+                    "Chromium": Path.home() / "Library/Application Support/Chromium/NativeMessagingHosts/org.hellyes.hellyes.json",
+                    "Firefox": Path.home() / "Library/Application Support/Mozilla/NativeMessagingHosts/org.hellyes.hellyes.json",
+                    "Brave": Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json",
+                }
+            else:
+                # Linux paths
+                manifests = {
+                    "Chrome": Path.home() / ".config/google-chrome/NativeMessagingHosts/org.hellyes.hellyes.json",
+                    "Chromium": Path.home() / ".config/chromium/NativeMessagingHosts/org.hellyes.hellyes.json",
+                    "Firefox": Path.home() / ".mozilla/native-messaging-hosts/org.hellyes.hellyes.json",
+                    "Brave": Path.home() / ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts/org.hellyes.hellyes.json",
+                }
 
             for browser, manifest in manifests.items():
                 if manifest.exists():
