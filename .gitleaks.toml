@@ -2,4 +2,5 @@
 paths = [
     '''pending/''',
     '''etc/''',
+    '''tmp/'''
 ]

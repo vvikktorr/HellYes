@@ -273,7 +273,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                                 sendResponse({ status: "error", error: chrome.runtime.lastError.message });
                             } else {
                                 console.log("Native host responded:", response);
-                                sendResponse({ status: "success", response: response });
+                                sendResponse(response);
                             }
                         }
                     );
