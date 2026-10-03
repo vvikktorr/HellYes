@@ -9,7 +9,20 @@ function storeTabData(tabId, key, value) {
     tabData[tabId][key] = value;
     console.log(`set ${tabId} key ${key} value ${value}`);
 
+    chrome.storage.session.set({ tabData: tabData });
+
     updateIconForTab(tabId);
+}
+
+// Restore in-memory tabData from session storage (survives service worker restarts)
+async function ensureTabData() {
+    if (Object.keys(tabData).length > 0) return;
+    try {
+        const stored = await chrome.storage.session.get("tabData");
+        if (stored.tabData) tabData = stored.tabData;
+    } catch (e) {
+        console.error("Failed to restore tabData:", e);
+    }
 }
 
 // Helper: update the extension's icon for a specific tab
@@ -41,7 +54,7 @@ function updateIconForTab(tabId) {
 }
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "getTabData") {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        ensureTabData().then(() => chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length === 0) return;
 
             let tabId = tabs[0].id;
@@ -52,7 +65,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 curlCommand: curlCommand(tabId) || "",
                 title: tabInfo.title || ""
             });
-        });
+        }));
 
         return true; // Indicate async response
     }
@@ -65,7 +78,7 @@ chrome.webRequest.onCompleted.addListener(
 
         // Exclude requests that are for images
         if (details.type === "image") return;
-        if ((/manifest|license|\/drm\/|type=widevine|\.mpd(\?|$)/i.test(details.url)) && !/\.webmanifest/i.test(details.url)) {
+        if ((/manifest|license|\/drm\/|type=widevine|\.mpd(\?|$)|\.m3u8(\?|$)/i.test(details.url)) && !/\.webmanifest/i.test(details.url)) {
             storeTabData(details.tabId, 'manifestUrl', details.url)
             manifestUrl = details.url;
             console.log("Matched URL:", details.url);
@@ -191,7 +204,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Listen for messages from the popup (button click)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "sendData") {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        ensureTabData().then(() => chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length === 0) {
                 console.error("No active tabs found.");
                 sendResponse({ status: "error", error: "No active tab found" });
@@ -279,7 +292,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     );
                 } // close finishSending function
             }); // close pageCookies.getAll callback
-        });
+        }));
 
         return true; // Indicate asynchronous response
     }

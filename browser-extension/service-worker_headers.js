@@ -15,7 +15,7 @@ function bytesToEsc(raw) {
 
 // --- sniff network ----------------------------------------------------------
 chrome.webRequest.onCompleted.addListener(
-  d => { if (d.method==="GET" && /manifest|license/i.test(d.url))
+  d => { if (d.method==="GET" && /manifest|license|\.mpd(\?|$)|\.m3u8(\?|$)/i.test(d.url) && !/\.webmanifest/i.test(d.url))
            store(d.tabId,"manifestUrl",d.url); },
   {urls:["<all_urls>"]}
 );
